@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>見積書・請求書作成アプリ</title>
+<style>
+  :root {
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --danger: #dc2626;
+    --success: #16a34a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; font-size: 14px; }
+
+  /* ===== ロック画面 ===== */
+  #lockScreen {
+    position: fixed; inset: 0; background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .lock-card {
+    background: #fff; border-radius: 16px; padding: 40px; width: 360px; max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3); text-align: center;
+  }
+  .lock-card h1 { font-size: 20px; margin-bottom: 6px; }
+  .lock-card p { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .lock-card input {
+    width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 12px; font-size: 15px;
+  }
+  .lock-card input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .lock-card button {
+    width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; font-size: 15px; font-weight: bold;
+  }
+  .lock-card button:hover { background: var(--accent-dark); }
+  .lock-error { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 20px; }
+
+  /* ===== ヘッダー ===== */
+  header.app-header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: center; gap: 24px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .app-header h1 { font-size: 17px; padding: 14px 0; white-space: nowrap; }
+  .app-header h1 span { color: var(--accent); }
+  nav.tabs { display: flex; gap: 4px; flex: 1; }
+  .tabs button {
+    background: none; border: none; padding: 16px 18px; font-size: 14px; color: var(--muted);
+    border-bottom: 3px solid transparent; font-weight: bold;
+  }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tabs button:hover { color: var(--accent); }
+  .btn-lock {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; color: var(--muted); font-size: 13px;
+  }
+  .btn-lock:hover { border-color: var(--muted); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ===== 共通部品 ===== */
+  .card {
+    background: var(--card); border-radius: 12px; padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--accent); display: inline-block; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .field label { display: block; font-size: 12px; font-weight: bold; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .field.wide { grid-column: 1 / -1; }
+
+  .btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: bold; font-size: 14px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover { background: #15803d; }
+  .btn-outline { background: #fff; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--muted); }
+  .btn-danger-outline { background: #fff; border: 1px solid #fecaca; color: var(--danger); }
+  .btn-danger-outline:hover { background: #fef2f2; }
+  .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 6px; }
+
+  /* ===== 作成画面レイアウト ===== */
+  .editor-layout { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(500px, 820px); gap: 24px; align-items: start; }
+  @media (max-width: 1100px) { .editor-layout { grid-template-columns: 1fr; } }
+
+  .doc-type-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: bold;
+  }
+  .badge-quote { background: #dbeafe; color: #1d4ed8; }
+  .badge-invoice { background: #dcfce7; color: #15803d; }
+
+  /* 明細テーブル */
+  table.items-editor { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .items-editor th {
+    font-size: 12px; color: var(--muted); text-align: left; padding: 6px 4px; border-bottom: 2px solid var(--border);
+  }
+  .items-editor td { padding: 4px 3px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .items-editor input { width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; }
+  .items-editor input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .items-editor input.num { text-align: right; }
+  .items-editor .amount-cell { text-align: right; font-weight: bold; white-space: nowrap; padding-right: 8px; }
+  .btn-del-row {
+    background: none; border: none; color: #cbd5e1; font-size: 18px; padding: 2px 8px; border-radius: 6px;
+  }
+  .btn-del-row:hover { color: var(--danger); background: #fef2f2; }
+
+  .totals-editor { text-align: right; font-size: 14px; margin-top: 8px; }
+  .totals-editor .grand { font-size: 20px; font-weight: bold; color: var(--accent); }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+  .toolbar .spacer { flex: 1; }
+
+  /* ===== 書類プレビュー（A4風） ===== */
+  .doc-sheet {
+    background: #fff; padding: 48px 52px; box-shadow: 0 2px 12px rgba(0,0,0,.1);
+    border-radius: 4px; min-height: 700px; font-size: 13px; color: #111;
+  }
+  .doc-sheet .doc-title {
+    font-size: 30px; letter-spacing: 18px; text-align: center; font-weight: bold; margin-bottom: 28px;
+    text-indent: 18px;
+  }
+  .doc-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .doc-client { font-size: 18px; font-weight: bold; border-bottom: 2px solid #111; padding: 0 24px 6px 4px; }
+  .doc-meta { font-size: 12px; text-align: right; color: #333; }
+  .doc-meta div { margin-bottom: 2px; }
+  .doc-company { text-align: left; font-size: 12px; margin-top: 14px; line-height: 1.7; }
+  .doc-company .cname { font-size: 15px; font-weight: bold; }
+  .doc-lead { margin-bottom: 8px; font-size: 13px; }
+  .doc-total-box {
+    display: flex; align-items: baseline; gap: 20px; border: 2px solid #111;
+    padding: 10px 24px; margin-bottom: 24px; width: fit-content;
+  }
+  .doc-total-box .label { font-size: 14px; font-weight: bold; }
+  .doc-total-box .value { font-size: 26px; font-weight: bold; }
+  table.doc-items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  .doc-items th {
+    background: #1e3a5f; color: #fff; padding: 8px 10px; font-size: 12px; font-weight: bold;
+    border: 1px solid #1e3a5f;
+  }
+  .doc-items td { border: 1px solid #94a3b8; padding: 7px 10px; }
+  .doc-items .r { text-align: right; } .doc-items .c { text-align: center; }
+  .doc-items tr:nth-child(even) td { background: #f8fafc; }
+  table.doc-totals { border-collapse: collapse; margin-left: auto; margin-bottom: 24px; }
+  .doc-totals td { border: 1px solid #94a3b8; padding: 7px 14px; min-width: 110px; }
+  .doc-totals .lbl { background: #f1f5f9; font-weight: bold; font-size: 12px; }
+  .doc-totals .r { text-align: right; }
+  .doc-totals .grand td { font-weight: bold; font-size: 15px; }
+  .doc-notes-box { border: 1px solid #94a3b8; padding: 10px 14px; font-size: 12px; margin-bottom: 16px; }
+  .doc-notes-box .t { font-weight: bold; margin-bottom: 4px; font-size: 12px; }
+  .doc-bank-box { border: 1px solid #94a3b8; padding: 10px 14px; font-size: 12px; margin-bottom: 16px; background: #f8fafc; }
+  .doc-bank-box .t { font-weight: bold; margin-bottom: 4px; }
+  .preview-hint { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+
+  /* ===== 一覧 ===== */
+  table.list-table { width: 100%; border-collapse: collapse; }
+  .list-table th {
+    text-align: left; font-size: 12px; color: var(--muted); padding: 10px 12px; border-bottom: 2px solid var(--border);
+  }
+  .list-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+  .list-table tr:hover td { background: #f8fafc; }
+  .list-table .r { text-align: right; }
+  .list-empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  .list-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+  /* ===== トースト ===== */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #1e293b; color: #fff; padding: 12px 24px; border-radius: 10px;
+    font-size: 14px; opacity: 0; transition: all .3s; z-index: 2000; pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== 印刷（PDF保存） ===== */
+  @media print {
+    body { background: #fff; }
+    #lockScreen, header.app-header, .editor-form-col, .toolbar, .preview-hint, #toast, .page:not(.active) { display: none !important; }
+    main { max-width: none; padding: 0; margin: 0; }
+    .editor-layout { display: block; }
+    .doc-sheet { box-shadow: none; border-radius: 0; padding: 0; min-height: auto; }
+    #pageList, #pageSettings { display: none !important; }
+    #pageEditor { display: block !important; }
+  }
+  @page { size: A4; margin: 15mm; }
+</style>
+</head>
+<body>
+
+<!-- ================= ロック画面 ================= -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <div style="font-size:40px;margin-bottom:8px;">🔒</div>
+    <h1 id="lockTitle">パスワードを入力</h1>
+    <p id="lockDesc">あなただけが知っているパスワードでロックを解除します</p>
+    <input type="password" id="pwInput" placeholder="パスワード" autocomplete="off">
+    <input type="password" id="pwConfirm" placeholder="パスワード（確認）" autocomplete="off" style="display:none;">
+    <button id="btnUnlock">ロック解除</button>
+    <div class="lock-error" id="lockError"></div>
+  </div>
+</div>
+
+<!-- ================= ヘッダー ================= -->
+<header class="app-header">
+  <h1>📋 <span>見積・請求</span> かんたん作成</h1>
+  <nav class="tabs">
+    <button data-page="pageEditor" class="active">書類作成</button>
+    <button data-page="pageList">保存済み一覧 <span id="docCount"></span></button>
+    <button data-page="pageSettings">自社情報</button>
+  </nav>
+  <button class="btn-lock" id="btnRelock">🔒 ロック</button>
+</header>
+
+<main>
+  <!-- ================= 作成ページ ================= -->
+  <div class="page active" id="pageEditor">
+    <div class="toolbar">
+      <button class="btn btn-outline" id="btnNew">＋ 新規見積書</button>
+      <span class="doc-type-badge badge-quote" id="typeBadge">見積書</span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="btnSave">💾 保存する</button>
+      <button class="btn btn-success" id="btnConvert">📄 請求書に変換</button>
+      <button class="btn btn-outline" id="btnPdf">🖨 PDF保存 / 印刷</button>
+    </div>
+
+    <div class="editor-layout">
+      <!-- 入力フォーム -->
+      <div class="editor-form-col">
+        <div class="card">
+          <h2>基本情報</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>書類番号</label>
+              <input type="text" id="fNumber">
+            </div>
+            <div class="field">
+              <label>発行日</label>
+              <input type="date" id="fDate">
+            </div>
+            <div class="field">
+              <label>宛名（取引先名）</label>
+              <input type="text" id="fClient" placeholder="株式会社サンプル">
+            </div>
+            <div class="field">
+              <label>敬称</label>
+              <select id="fHonorific">
+                <option value="御中">御中</option>
+                <option value="様">様</option>
+                <option value="">（なし）</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>件名</label>
+              <input type="text" id="fSubject" placeholder="〇〇デザイン制作の件">
+            </div>
+            <div class="field">
+              <label id="fDueLabel">見積有効期限</label>
+              <input type="date" id="fDue">
+            </div>
+            <div class="field">
+              <label>消費税率</label>
+              <select id="fTaxRate">
+                <option value="10">10%</option>
+                <option value="8">8%</option>
+                <option value="0">0%（非課税）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>明細</h2>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <select id="tplSelect" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;">
+              <option value="">📁 テンプレートから商品を選択（デザイン業 20項目）</option>
+            </select>
+            <button class="btn btn-outline btn-sm" id="btnAddTpl">追加</button>
+          </div>
+          <table class="items-editor">
+            <thead>
+              <tr>
+                <th style="width:44%;">品目</th>
+                <th style="width:11%;">数量</th>
+                <th style="width:11%;">単位</th>
+                <th style="width:16%;">単価</th>
+                <th style="width:14%;text-align:right;">金額</th>
+                <th style="width:4%;"></th>
+              </tr>
+            </thead>
+            <tbody id="itemsBody"></tbody>
+          </table>
+          <button class="btn btn-outline btn-sm" id="btnAddRow">＋ 空の行を追加</button>
+          <div class="totals-editor">
+            <div>小計：<span id="edSubtotal">¥0</span>　消費税：<span id="edTax">¥0</span></div>
+            <div class="grand">合計 <span id="edTotal">¥0</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>備考</h2>
+          <div class="field wide">
+            <textarea id="fNotes" rows="3" placeholder="備考を入力"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- プレビュー -->
+      <div>
+        <div class="preview-hint">▼ プレビュー（このまま印刷・PDF保存されます）</div>
+        <div class="doc-sheet" id="docSheet"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 一覧ページ ================= -->
+  <div class="page" id="pageList">
+    <div class="card">
+      <h2>保存済みの書類</h2>
+      <table class="list-table">
+        <thead>
+          <tr>
+            <th>種別</th><th>書類番号</th><th>宛名</th><th>件名</th><th>発行日</th>
+            <th class="r">合計金額</th><th class="r">操作</th>
+          </tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      </table>
+      <div class="list-empty" id="listEmpty">まだ保存された書類はありません。「書類作成」タブから作成・保存してください。</div>
+    </div>
+  </div>
+
+  <!-- ================= 自社情報ページ ================= -->
+  <div class="page" id="pageSettings">
+    <div class="card">
+      <h2>自社情報（書類に印字されます）</h2>
+      <div class="form-grid">
+        <div class="field"><label>会社名 / 屋号</label><input type="text" id="cName" placeholder="〇〇デザイン事務所"></div>
+        <div class="field"><label>代表者名</label><input type="text" id="cRep" placeholder="山田 太郎"></div>
+        <div class="field"><label>郵便番号</label><input type="text" id="cZip" placeholder="123-4567"></div>
+        <div class="field wide"><label>住所</label><input type="text" id="cAddress" placeholder="東京都渋谷区〇〇 1-2-3"></div>
+        <div class="field"><label>電話番号</label><input type="text" id="cTel" placeholder="03-1234-5678"></div>
+        <div class="field"><label>メールアドレス</label><input type="text" id="cEmail" placeholder="info@example.com"></div>
+        <div class="field"><label>インボイス登録番号（任意）</label><input type="text" id="cInvoiceNo" placeholder="T1234567890123"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>振込先（請求書に印字されます）</h2>
+      <div class="form-grid">
+        <div class="field"><label>銀行名</label><input type="text" id="cBank" placeholder="〇〇銀行"></div>
+        <div class="field"><label>支店名</label><input type="text" id="cBranch" placeholder="渋谷支店"></div>
+        <div class="field"><label>口座種別</label>
+          <select id="cAccType"><option>普通</option><option>当座</option></select>
+        </div>
+        <div class="field"><label>口座番号</label><input type="text" id="cAccNo" placeholder="1234567"></div>
+        <div class="field"><label>口座名義（カナ）</label><input type="text" id="cAccName" placeholder="ヤマダ タロウ"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>パスワード変更</h2>
+      <div class="form-grid">
+        <div class="field"><label>新しいパスワード</label><input type="password" id="newPw" autocomplete="new-password"></div>
+        <div class="field"><label>新しいパスワード（確認）</label><input type="password" id="newPwConfirm" autocomplete="new-password"></div>
+      </div>
+      <div style="margin-top:14px;">
+        <button class="btn btn-outline" id="btnChangePw">パスワードを変更</button>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <button class="btn btn-primary" id="btnSaveSettings">💾 自社情報を保存</button>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================
+ * データ保存：ブラウザ内蔵の NoSQL（キー・バリュー型ドキュメントストア）
+ * localStorage に JSON ドキュメントとして保存します。
+ * キー: mitsumori.docs（書類コレクション） / mitsumori.company / mitsumori.pw
+ * ======================================================= */
+const DB = {
+  read(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  },
+  write(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+};
+const KEY_DOCS = "mitsumori.docs";
+const KEY_COMPANY = "mitsumori.company";
+const KEY_PW = "mitsumori.pw";
+
+/* ===== デザイン業向け 商品テンプレート（20項目） ===== */
+const TEMPLATES = [
+  { name: "ロゴデザイン制作（提案3案・修正2回込み）", unit: "式", price: 80000 },
+  { name: "名刺デザイン（両面）", unit: "式", price: 15000 },
+  { name: "ショップカードデザイン", unit: "式", price: 20000 },
+  { name: "チラシデザイン（A4・片面）", unit: "式", price: 30000 },
+  { name: "チラシデザイン（A4・両面）", unit: "式", price: 45000 },
+  { name: "パンフレットデザイン（A4・三つ折り）", unit: "式", price: 60000 },
+  { name: "ポスターデザイン（B2）", unit: "式", price: 50000 },
+  { name: "メニュー表デザイン", unit: "式", price: 35000 },
+  { name: "封筒デザイン（長3・角2）", unit: "式", price: 15000 },
+  { name: "パッケージデザイン", unit: "式", price: 120000 },
+  { name: "看板・サインデザイン", unit: "式", price: 70000 },
+  { name: "Webサイトデザイン（トップページ）", unit: "式", price: 100000 },
+  { name: "Webサイトデザイン（下層ページ）", unit: "ページ", price: 30000 },
+  { name: "バナーデザイン", unit: "点", price: 8000 },
+  { name: "SNS投稿用画像デザイン", unit: "点", price: 5000 },
+  { name: "キャラクターデザイン", unit: "式", price: 100000 },
+  { name: "イラスト制作", unit: "点", price: 25000 },
+  { name: "写真撮影（半日・レタッチ込み）", unit: "式", price: 40000 },
+  { name: "コピーライティング", unit: "式", price: 30000 },
+  { name: "ディレクション費", unit: "式", price: 50000 },
+];
+
+/* ===== 状態 ===== */
+let currentDoc = null; // 編集中の書類
+
+/* ===== ユーティリティ ===== */
+const $ = (id) => document.getElementById(id);
+const yen = (n) => "¥" + Math.round(n).toLocaleString("ja-JP");
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const fmtDate = (s) => {
+  if (!s) return "";
+  const [y, m, d] = s.split("-");
+  return `${y}年${Number(m)}月${Number(d)}日`;
+};
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+async function hashText(text) {
+  if (crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("mitsumori::" + text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // crypto.subtle が使えない環境向けの簡易ハッシュ
+  let h = 5381;
+  const s = "mitsumori::" + text;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return "djb2:" + h.toString(16);
+}
+
+/* =========================================================
+ * パスワードロック
+ * ======================================================= */
+async function initLock() {
+  const saved = DB.read(KEY_PW, null);
+  const isSetup = !saved;
+  if (isSetup) {
+    $("lockTitle").textContent = "パスワードを設定";
+    $("lockDesc").textContent = "初回起動です。あなただけが知るパスワードを決めてください";
+    $("pwConfirm").style.display = "block";
+    $("btnUnlock").textContent = "パスワードを設定して開始";
+  }
+  if (sessionStorage.getItem("mitsumori.unlocked") === "1" && !isSetup) {
+    unlock();
+    return;
+  }
+  $("btnUnlock").onclick = async () => {
+    const pw = $("pwInput").value;
+    if (!pw) { $("lockError").textContent = "パスワードを入力してください"; return; }
+    if (isSetup) {
+      if (pw.length < 4) { $("lockError").textContent = "4文字以上にしてください"; return; }
+      if (pw !== $("pwConfirm").value) { $("lockError").textContent = "確認用パスワードが一致しません"; return; }
+      DB.write(KEY_PW, await hashText(pw));
+      unlock();
+      toast("パスワードを設定しました");
+    } else {
+      if ((await hashText(pw)) === saved) {
+        unlock();
+      } else {
+        $("lockError").textContent = "パスワードが違います";
+        $("pwInput").value = "";
+      }
+    }
+  };
+  $("pwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnUnlock").click(); });
+  $("pwConfirm").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnUnlock").click(); });
+}
+function unlock() {
+  sessionStorage.setItem("mitsumori.unlocked", "1");
+  $("lockScreen").style.display = "none";
+}
+$("btnRelock").onclick = () => {
+  sessionStorage.removeItem("mitsumori.unlocked");
+  location.reload();
+};
+
+/* =========================================================
+ * タブ切替
+ * ======================================================= */
+document.querySelectorAll(".tabs button").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(btn.dataset.page).classList.add("active");
+    if (btn.dataset.page === "pageList") renderList();
+  };
+});
+function goToPage(pageId) {
+  document.querySelector(`.tabs button[data-page="${pageId}"]`).click();
+}
+
+/* =========================================================
+ * 書類の新規作成・番号採番
+ * ======================================================= */
+function genNumber(type) {
+  const docs = DB.read(KEY_DOCS, []);
+  const prefix = type === "invoice" ? "I" : "Q";
+  const ymd = todayStr().replace(/-/g, "");
+  const sameDay = docs.filter((d) => (d.number || "").startsWith(`${prefix}-${ymd}`)).length;
+  return `${prefix}-${ymd}-${String(sameDay + 1).padStart(3, "0")}`;
+}
+function endOfNextMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 2, 0).toISOString().slice(0, 10);
+}
+function oneMonthLater() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+function newDoc() {
+  currentDoc = {
+    id: "doc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+    type: "quote",
+    number: genNumber("quote"),
+    date: todayStr(),
+    due: oneMonthLater(),
+    client: "", honorific: "御中", subject: "",
+    taxRate: 10,
+    items: [{ name: "", qty: 1, unit: "式", price: 0 }],
+    notes: "お見積りの有効期限は発行日より1ヶ月とさせていただきます。",
+    createdAt: Date.now(),
+  };
+  docToForm();
+}
+
+/* =========================================================
+ * フォーム ⇔ データ
+ * ======================================================= */
+function docToForm() {
+  const d = currentDoc;
+  $("fNumber").value = d.number;
+  $("fDate").value = d.date;
+  $("fClient").value = d.client;
+  $("fHonorific").value = d.honorific;
+  $("fSubject").value = d.subject;
+  $("fDue").value = d.due || "";
+  $("fTaxRate").value = String(d.taxRate);
+  $("fNotes").value = d.notes;
+  const isInv = d.type === "invoice";
+  $("fDueLabel").textContent = isInv ? "お支払期限" : "見積有効期限";
+  const badge = $("typeBadge");
+  badge.textContent = isInv ? "請求書" : "見積書";
+  badge.className = "doc-type-badge " + (isInv ? "badge-invoice" : "badge-quote");
+  $("btnConvert").style.display = isInv ? "none" : "";
+  renderItemsEditor();
+  renderPreview();
+}
+function formToDoc() {
+  const d = currentDoc;
+  d.number = $("fNumber").value.trim();
+  d.date = $("fDate").value;
+  d.client = $("fClient").value.trim();
+  d.honorific = $("fHonorific").value;
+  d.subject = $("fSubject").value.trim();
+  d.due = $("fDue").value;
+  d.taxRate = Number($("fTaxRate").value);
+  d.notes = $("fNotes").value;
+}
+
+/* ===== 明細エディタ ===== */
+function renderItemsEditor() {
+  const body = $("itemsBody");
+  body.innerHTML = "";
+  currentDoc.items.forEach((it, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="text" data-k="name" data-i="${idx}" value="${escapeHtml(it.name)}" placeholder="品目名"></td>
+      <td><input type="number" class="num" data-k="qty" data-i="${idx}" value="${it.qty}" min="0" step="1"></td>
+      <td><input type="text" data-k="unit" data-i="${idx}" value="${escapeHtml(it.unit)}"></td>
+      <td><input type="number" class="num" data-k="price" data-i="${idx}" value="${it.price}" min="0" step="100"></td>
+      <td class="amount-cell">${yen(it.qty * it.price)}</td>
+      <td><button class="btn-del-row" data-del="${idx}" title="この行を削除">✕</button></td>`;
+    body.appendChild(tr);
+  });
+  updateEditorTotals();
+}
+$("itemsBody").addEventListener("input", (e) => {
+  const k = e.target.dataset.k;
+  if (!k) return;
+  const i = Number(e.target.dataset.i);
+  const it = currentDoc.items[i];
+  if (k === "qty" || k === "price") it[k] = Number(e.target.value) || 0;
+  else it[k] = e.target.value;
+  e.target.closest("tr").querySelector(".amount-cell").textContent = yen(it.qty * it.price);
+  updateEditorTotals();
+  renderPreview();
+});
+$("itemsBody").addEventListener("click", (e) => {
+  const del = e.target.dataset.del;
+  if (del === undefined) return;
+  currentDoc.items.splice(Number(del), 1);
+  if (currentDoc.items.length === 0) currentDoc.items.push({ name: "", qty: 1, unit: "式", price: 0 });
+  renderItemsEditor();
+  renderPreview();
+});
+$("btnAddRow").onclick = () => {
+  currentDoc.items.push({ name: "", qty: 1, unit: "式", price: 0 });
+  renderItemsEditor();
+  renderPreview();
+};
+$("btnAddTpl").onclick = () => {
+  const v = $("tplSelect").value;
+  if (v === "") { toast("テンプレートを選択してください"); return; }
+  const tpl = TEMPLATES[Number(v)];
+  // 先頭の空行があれば置き換える
+  const emptyIdx = currentDoc.items.findIndex((it) => !it.name && it.price === 0);
+  const item = { name: tpl.name, qty: 1, unit: tpl.unit, price: tpl.price };
+  if (emptyIdx >= 0) currentDoc.items[emptyIdx] = item;
+  else currentDoc.items.push(item);
+  renderItemsEditor();
+  renderPreview();
+  toast(`「${tpl.name}」を追加しました`);
+};
+
+function calcTotals(doc) {
+  const subtotal = doc.items.reduce((s, it) => s + it.qty * it.price, 0);
+  const tax = Math.floor(subtotal * doc.taxRate / 100);
+  return { subtotal, tax, total: subtotal + tax };
+}
+function updateEditorTotals() {
+  const { subtotal, tax, total } = calcTotals(currentDoc);
+  $("edSubtotal").textContent = yen(subtotal);
+  $("edTax").textContent = yen(tax);
+  $("edTotal").textContent = yen(total);
+}
+
+/* 基本情報フォームの変更 → プレビュー即時反映 */
+["fNumber", "fDate", "fClient", "fHonorific", "fSubject", "fDue", "fTaxRate", "fNotes"].forEach((id) => {
+  $(id).addEventListener("input", () => { formToDoc(); updateEditorTotals(); renderPreview(); });
+});
+
+/* =========================================================
+ * プレビュー描画
+ * ======================================================= */
+function renderPreview() {
+  const d = currentDoc;
+  const c = DB.read(KEY_COMPANY, {});
+  const { subtotal, tax, total } = calcTotals(d);
+  const isInv = d.type === "invoice";
+  const title = isInv ? "請求書" : "見積書";
+  const lead = isInv
+    ? "下記の通りご請求申し上げます。"
+    : "下記の通りお見積り申し上げます。";
+  const dueLabel = isInv ? "お支払期限" : "見積有効期限";
+
+  const itemRows = d.items
+    .filter((it) => it.name || it.price > 0)
+    .map((it, i) => `
+      <tr>
+        <td class="c" style="width:6%;">${i + 1}</td>
+        <td>${escapeHtml(it.name)}</td>
+        <td class="r" style="width:10%;">${it.qty.toLocaleString()}</td>
+        <td class="c" style="width:10%;">${escapeHtml(it.unit)}</td>
+        <td class="r" style="width:16%;">${yen(it.price)}</td>
+        <td class="r" style="width:16%;">${yen(it.qty * it.price)}</td>
+      </tr>`).join("");
+
+  const companyHtml = `
+    <div class="doc-company">
+      <div class="cname">${escapeHtml(c.name || "（自社情報を設定してください）")}</div>
+      ${c.rep ? `<div>${escapeHtml(c.rep)}</div>` : ""}
+      ${c.zip || c.address ? `<div>${c.zip ? "〒" + escapeHtml(c.zip) + " " : ""}${escapeHtml(c.address || "")}</div>` : ""}
+      ${c.tel ? `<div>TEL: ${escapeHtml(c.tel)}</div>` : ""}
+      ${c.email ? `<div>Email: ${escapeHtml(c.email)}</div>` : ""}
+      ${c.invoiceNo ? `<div>登録番号: ${escapeHtml(c.invoiceNo)}</div>` : ""}
+    </div>`;
+
+  const bankHtml = isInv && (c.bank || c.accNo) ? `
+    <div class="doc-bank-box">
+      <div class="t">お振込先</div>
+      ${escapeHtml(c.bank || "")} ${escapeHtml(c.branch || "")}　${escapeHtml(c.accType || "普通")}　${escapeHtml(c.accNo || "")}<br>
+      口座名義：${escapeHtml(c.accName || "")}
+      <div style="margin-top:4px;color:#555;">※恐れ入りますが、振込手数料は貴社にてご負担願います。</div>
+    </div>` : "";
+
+  $("docSheet").innerHTML = `
+    <div class="doc-title">${title}</div>
+    <div class="doc-head">
+      <div>
+        <div class="doc-client">${escapeHtml(d.client) || "　　　　　　　　"}　${escapeHtml(d.honorific)}</div>
+        <div style="margin-top:16px;">
+          <div class="doc-lead">${d.subject ? `件名：${escapeHtml(d.subject)}` : ""}</div>
+          <div class="doc-lead">${lead}</div>
+        </div>
+        <div class="doc-total-box">
+          <span class="label">合計金額</span>
+          <span class="value">${yen(total)}</span>
+          <span style="font-size:11px;">（税込）</span>
+        </div>
+      </div>
+      <div>
+        <div class="doc-meta">
+          <div>No. ${escapeHtml(d.number)}</div>
+          <div>発行日：${fmtDate(d.date)}</div>
+          ${d.due ? `<div>${dueLabel}：${fmtDate(d.due)}</div>` : ""}
+        </div>
+        ${companyHtml}
+      </div>
+    </div>
+    <table class="doc-items">
+      <thead>
+        <tr><th style="width:6%;">No.</th><th>品目</th><th style="width:10%;">数量</th><th style="width:10%;">単位</th><th style="width:16%;">単価</th><th style="width:16%;">金額</th></tr>
+      </thead>
+      <tbody>${itemRows || `<tr><td class="c">1</td><td></td><td></td><td></td><td></td><td></td></tr>`}</tbody>
+    </table>
+    <table class="doc-totals">
+      <tr><td class="lbl">小計</td><td class="r">${yen(subtotal)}</td></tr>
+      <tr><td class="lbl">消費税（${d.taxRate}%）</td><td class="r">${yen(tax)}</td></tr>
+      <tr class="grand"><td class="lbl">合計金額</td><td class="r">${yen(total)}</td></tr>
+    </table>
+    ${bankHtml}
+    ${d.notes ? `<div class="doc-notes-box"><div class="t">備考</div>${escapeHtml(d.notes).replace(/\n/g, "<br>")}</div>` : ""}
+  `;
+}
+
+/* =========================================================
+ * 保存・一覧・変換・PDF
+ * ======================================================= */
+function saveDoc(silent) {
+  formToDoc();
+  const docs = DB.read(KEY_DOCS, []);
+  const idx = docs.findIndex((x) => x.id === currentDoc.id);
+  currentDoc.updatedAt = Date.now();
+  if (idx >= 0) docs[idx] = currentDoc;
+  else docs.unshift(currentDoc); // 新しいものが上
+  DB.write(KEY_DOCS, docs);
+  updateDocCount();
+  if (!silent) toast("保存しました 💾");
+}
+$("btnSave").onclick = () => saveDoc(false);
+$("btnNew").onclick = () => { newDoc(); toast("新しい見積書を作成しました"); };
+
+/* 請求書に変換 */
+$("btnConvert").onclick = () => {
+  formToDoc();
+  saveDoc(true); // 元の見積書を保存しておく
+  const inv = JSON.parse(JSON.stringify(currentDoc));
+  inv.id = "doc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+  inv.type = "invoice";
+  inv.number = genNumber("invoice");
+  inv.date = todayStr();
+  inv.due = endOfNextMonth();
+  inv.notes = "お振込の際の手数料は貴社にてご負担をお願いいたします。";
+  inv.sourceQuote = currentDoc.number;
+  inv.createdAt = Date.now();
+  currentDoc = inv;
+  saveDoc(true);
+  docToForm();
+  toast("請求書に変換して保存しました 📄");
+};
+
+/* PDF保存（ブラウザの印刷ダイアログで「PDFとして保存」） */
+$("btnPdf").onclick = () => {
+  formToDoc();
+  renderPreview();
+  window.print();
+};
+
+/* 一覧 */
+function renderList() {
+  const docs = DB.read(KEY_DOCS, []);
+  const body = $("listBody");
+  $("listEmpty").style.display = docs.length ? "none" : "block";
+  body.innerHTML = "";
+  docs.forEach((d) => {
+    const { total } = calcTotals(d);
+    const isInv = d.type === "invoice";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="doc-type-badge ${isInv ? "badge-invoice" : "badge-quote"}">${isInv ? "請求書" : "見積書"}</span></td>
+      <td>${escapeHtml(d.number)}</td>
+      <td>${escapeHtml(d.client) || "－"}</td>
+      <td>${escapeHtml(d.subject) || "－"}</td>
+      <td>${fmtDate(d.date)}</td>
+      <td class="r" style="font-weight:bold;">${yen(total)}</td>
+      <td>
+        <div class="list-actions">
+          <button class="btn btn-outline btn-sm" data-open="${d.id}">開く</button>
+          <button class="btn btn-outline btn-sm" data-copy="${d.id}">複製</button>
+          <button class="btn btn-danger-outline btn-sm" data-del="${d.id}">削除</button>
+        </div>
+      </td>`;
+    body.appendChild(tr);
+  });
+}
+$("listBody").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const docs = DB.read(KEY_DOCS, []);
+  if (btn.dataset.open) {
+    currentDoc = docs.find((d) => d.id === btn.dataset.open);
+    docToForm();
+    goToPage("pageEditor");
+  } else if (btn.dataset.copy) {
+    const src = docs.find((d) => d.id === btn.dataset.copy);
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = "doc_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+    copy.number = genNumber(copy.type);
+    copy.date = todayStr();
+    copy.createdAt = Date.now();
+    docs.unshift(copy);
+    DB.write(KEY_DOCS, docs);
+    renderList();
+    updateDocCount();
+    toast("複製しました");
+  } else if (btn.dataset.del) {
+    if (btn.dataset.confirmed !== "1") {
+      btn.dataset.confirmed = "1";
+      btn.textContent = "本当に削除？";
+      setTimeout(() => { btn.dataset.confirmed = "0"; btn.textContent = "削除"; }, 3000);
+      return;
+    }
+    DB.write(KEY_DOCS, docs.filter((d) => d.id !== btn.dataset.del));
+    renderList();
+    updateDocCount();
+    toast("削除しました");
+  }
+});
+function updateDocCount() {
+  const n = DB.read(KEY_DOCS, []).length;
+  $("docCount").textContent = n ? `(${n})` : "";
+}
+
+/* =========================================================
+ * 自社情報
+ * ======================================================= */
+const COMPANY_FIELDS = {
+  cName: "name", cRep: "rep", cZip: "zip", cAddress: "address", cTel: "tel",
+  cEmail: "email", cInvoiceNo: "invoiceNo",
+  cBank: "bank", cBranch: "branch", cAccType: "accType", cAccNo: "accNo", cAccName: "accName",
+};
+function loadCompanyForm() {
+  const c = DB.read(KEY_COMPANY, {});
+  for (const [id, key] of Object.entries(COMPANY_FIELDS)) $(id).value = c[key] || "";
+}
+$("btnSaveSettings").onclick = () => {
+  const c = {};
+  for (const [id, key] of Object.entries(COMPANY_FIELDS)) c[key] = $(id).value.trim();
+  DB.write(KEY_COMPANY, c);
+  renderPreview();
+  toast("自社情報を保存しました 💾");
+};
+$("btnChangePw").onclick = async () => {
+  const pw = $("newPw").value;
+  if (pw.length < 4) { toast("パスワードは4文字以上にしてください"); return; }
+  if (pw !== $("newPwConfirm").value) { toast("確認用パスワードが一致しません"); return; }
+  DB.write(KEY_PW, await hashText(pw));
+  $("newPw").value = "";
+  $("newPwConfirm").value = "";
+  toast("パスワードを変更しました 🔑");
+};
+
+/* =========================================================
+ * 初期化
+ * ======================================================= */
+(function init() {
+  // テンプレートのセレクトを構築
+  const sel = $("tplSelect");
+  TEMPLATES.forEach((t, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = `${t.name}（${yen(t.price)}/${t.unit}）`;
+    sel.appendChild(opt);
+  });
+  loadCompanyForm();
+  newDoc();
+  updateDocCount();
+  initLock();
+})();
+</script>
+</body>
+</html>
